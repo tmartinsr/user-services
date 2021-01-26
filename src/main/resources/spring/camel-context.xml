@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:cxf="http://camel.apache.org/schema/cxf"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="             http://www.springframework.org/schema/beans             https://www.springframework.org/schema/beans/spring-beans.xsd             http://camel.apache.org/schema/cxf       http://camel.apache.org/schema/cxf/camel-cxf.xsd             http://camel.apache.org/schema/spring             https://camel.apache.org/schema/spring/camel-spring.xsd">
+    <import resource="jetty-engine.xml"/>
+    <bean class="com.fasterxml.jackson.jaxrs.json.JacksonJsonProvider" id="jsonProvider"/>
+    <cxf:rsServer address="http://localhost:8282/user-services"
+        depends-on="kc-cxf-endpoint" id="restUsersApiServer"
+        loggingFeatureEnabled="true" serviceClass="io.swagger.api.UsersApi">
+        <cxf:providers>
+            <ref bean="jsonProvider"/>
+        </cxf:providers>
+    </cxf:rsServer>
+    <camelContext id="camel" xmlns="http://camel.apache.org/schema/spring">
+        <route id="_routeRestUsersApi">
+            <from id="_fromRestUsersApi" uri="cxfrs:bean:restUsersApiServer?bindingStyle=SimpleConsumer"/>
+            <log id="_logRestUsersApi" message="Called method: ${header.operationName}, userId: ${in.header.userId}"/>
+            <toD id="_toRestUsersApi" uri="direct:${header.operationName}"/>
+        </route>
+        <route id="_routeRetrieveUserDetails">
+            <from id="_fromRetrieveUserDetails" uri="direct:retrieveUserDetails"/>
+            <log id="_log1RetrieveUserDetails" message="Called method: ${header.operationName}"/>
+            <setBody id="_setBodyRetrieveUserDetails">
+                <simple>resource:classpath:data/users.json</simple>
+            </setBody>
+            <to id="_to1RetrieveUserAccounts" uri="direct:dataSelectionByUserId"/>
+        </route>
+        <route id="_routeDataSelectionByUserId">
+            <from id="_fromDataSelectionByUserId" uri="direct:dataSelectionByUserId"/>
+            <doTry id="_doTry1">
+                <transform id="_transform1DataSelectionByUserId">
+                    <jsonpath>$[?(@.user_id == ${in.header.userId})]</jsonpath>
+                </transform>
+                <transform id="_transform2DataSelectionByUserId">
+                    <jsonpath>$[0]</jsonpath>
+                </transform>
+                <doCatch id="_doCatch1">
+                    <exception>com.jayway.jsonpath.PathNotFoundException</exception>
+                    <setHeader headerName="Exchange.HTTP_RESPONSE_CODE"><constant>404</constant></setHeader>
+                    <setBody id="_setBody1">
+                        <constant>{ "code": 404, "message": "Not found" }</constant>
+                    </setBody>
+                </doCatch>
+            </doTry>
+            <log id="_logDataSelectionByUserId" message=">>> ${body}"/>
+        </route>
+    </camelContext>
+</beans>
